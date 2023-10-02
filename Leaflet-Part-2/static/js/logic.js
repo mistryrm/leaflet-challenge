@@ -1,10 +1,12 @@
-// API endpoint
+// API endpoints
 const queryUrl = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_week.geojson"
+const platesUrl = "./data/PB2002_plates.json"
 
 // GET data from endpoint
-d3.json(queryUrl).then(function (data) {
-    // On response, pass the data.features to ceate map
-    createMap(data.features);
+d3.json(queryUrl).then(function (earthquakeData) {
+    d3.json(platesUrl).then(function (plateData) {
+        createMap(earthquakeData.features, plateData.features);
+    });
 });
 
 // This function helps classify earthquake color based on depth
@@ -26,21 +28,35 @@ function getColor(depth) {
     }
 }
 
-function createMap(earthquakeData) {
-    const earthquakesFeatures = createFeatures(earthquakeData)
-    const streeMapLayer = getMapLayer()
+function createMap(earthquakeData, plateData) {
+    const [earthquakes, plates] = createFeatures(earthquakeData, plateData)
+    const [streetMap, topologicalMap, darkMap] = getMapLayer()
     // Create map, passing the streetmap and earthquakes layers to display
     const map = L.map("map", {
         center: [
             37.09, -95.71
         ],
         zoom: 5,
-        layers: [streeMapLayer, earthquakesFeatures]
+        layers: [streetMap, topologicalMap, earthquakes]
     });
+
+    const baseMaps = {
+        "Street": streetMap,
+        "Topographic": topologicalMap,
+        "Dark": darkMap
+    };
+
+    const overlayMaps = {
+        "Earthquakes": earthquakes,
+        "Tectonic Plates": plates
+    };
+
+    addControls(map, baseMaps, overlayMaps)
     createLegend(map)
 }
 
-function createFeatures(earthquakeData) {
+// This function generates features to be added to a map
+function createFeatures(earthquakeData, plateData) {
     // Give each feature a popup describing the place and time of the earthquake
     function onEachFeature(feature, layer) {
         layer.bindPopup(
@@ -57,7 +73,7 @@ function createFeatures(earthquakeData) {
     }
 
     // Create a GeoJSON layer containing the features array on the earthquakeData object
-    return earthquakes = L.geoJSON(earthquakeData, {
+    const earthquakes = L.geoJSON(earthquakeData, {
         onEachFeature: onEachFeature,
         pointToLayer: function (feature, latlng) {
             const color = getColor(feature.geometry.coordinates[2])
@@ -73,18 +89,39 @@ function createFeatures(earthquakeData) {
             return L.circleMarker(latlng, geojsonMarkerOptions);
         }
     });
+
+    const plates = L.geoJSON(plateData, {
+        style: function () {
+            return {
+                color: "blue",
+                weight: 2.5
+            }
+        }
+    });
+
+    return [earthquakes, plates]
 }
 
 // This function generates a map based on earthquake data
 function getMapLayer() {
     // Define streetmap and layers
-    return streetmap = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    const streetMap = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19,
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
     });
+
+    const topologicalMap = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+        attribution: 'Map data: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, <a href="http://viewfinderpanoramas.org">SRTM</a> | Map style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/">CC-BY-SA</a>)'
+    });
+
+    var darkMap = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+        subdomains: 'abcd',
+        maxZoom: 20
+    });
+
+    return [streetMap, topologicalMap, darkMap]
 }
-
-
 
 // Creates legend to add to map
 function createLegend(map) {
@@ -110,4 +147,11 @@ function createLegend(map) {
     };
 
     legend.addTo(map);
+}
+
+// This function adds controls to map
+function addControls(map, baseMaps, overlayMaps) {
+    L.control.layers(baseMaps, overlayMaps, {
+        collapsed: false
+    }).addTo(map);
 }
